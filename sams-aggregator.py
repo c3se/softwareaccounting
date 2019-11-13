@@ -14,8 +14,6 @@ import sams.core
 
 logger = logging.getLogger(__name__)
 
-id = 'sams.aggregator'
-
 class Options:
     def usage(self):
         print("usage....")
@@ -52,20 +50,16 @@ class Main:
         # Logging
         loglevel = self.options.loglevel
         if not loglevel:
-            loglevel = self.config.get([id,'loglevel'],'ERROR')
-        if not loglevel:
-            loglevel = self.config.get(['common','loglevel'],'ERROR')
+            loglevel = self.config.get(['core','loglevel'],'ERROR')
         loglevel_n = getattr(logging, loglevel.upper(), None)
         if not isinstance(loglevel_n, int):
             raise ValueError('Invalid log level: %s' % loglevel)
         logfile = self.options.logfile
         if not logfile:
-            logfile = self.config.get([id,'logfile'])
-        if not logfile:
-            logfile = self.config.get(['common','logfile'])
+            logfile = self.config.get(['core','logfile'])
         if logfile:
             logfile = logfile % { 'jobid': self.options.jobid, 'node': self.options.node }
-        logformat = self.config.get([id,'logformat'],'%(asctime)s %(name)s:%(levelname)s %(message)s')
+        logformat = self.config.get(['core','logformat'],'%(asctime)s %(name)s:%(levelname)s %(message)s')
         if logfile:
             logging.basicConfig(filename=logfile, filemode='a',
                                 format=logformat,level=loglevel_n)
@@ -76,7 +70,7 @@ class Main:
         self.loaders = []
         self.aggregators = []
 
-        for l in self.config.get([id,'loaders'],[]):
+        for l in self.config.get(['core','loaders'],[]):
             try:
                 Loader = sams.core.ClassLoader.load(l,'Loader')
                 loader = Loader(l,self.config)
@@ -86,7 +80,7 @@ class Main:
                 logger.error(e)
                 exit(1)
 
-        for a in self.config.get([id,'aggregators'],[]):
+        for a in self.config.get(['core','aggregators'],[]):
             try:
                 Aggregator = sams.core.ClassLoader.load(a,'Aggregator')
                 aggregator = Aggregator(a,self.config)
