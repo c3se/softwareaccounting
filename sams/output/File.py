@@ -64,7 +64,7 @@ class Output(sams.base.Output):
             if not os.path.isdir(base_path):
                 try:
                     os.mkdir(base_path)
-                except Exception as err:
+                except IOError as err:
                     # Handle possible raise from other process
                     if not os.path.isdir(base_path):
                         assert False, "Failed to mkdir '%s' " % base_path
@@ -73,11 +73,11 @@ class Output(sams.base.Output):
             with open(os.path.join(base_path,tfilename),"w") as file:
                 file.write(json.dumps(self.data,sort_keys=True,separators=(',',':')))
             os.rename(os.path.join(base_path,tfilename),os.path.join(base_path,filename))
-        except Exception as err:
+        except IOError as err:            
             logger.debug("Failed to write file")
             try:
                 os.unlink(os.path.join(base_path,tfilename))
-            except Exception as err:
+            except IOError as err:
                 logger.error("Failed to unlink tmp file")
                 # ignore unlink failure
                 pass

@@ -84,17 +84,11 @@ class Output(sams.base.Output):
         d.update(di)
         for k,v in self.map.items():
             m = self.safe_metric(self.data,v.split('/'))
-            if not m:
-                logger.warning("map: %s: %s is missing" % (k,v))
+            if not v:                
                 return
             d[k] = m
 
         dest = destination % d
-
-        if not value:
-            logger.warning("%s got no metric" % (dest))
-            return
-
         message = "%s %s %d\n" % (dest,value,int(time.time()))
         logger.debug("Sending: %s to %s:%s" % (message,self.server,self.port))
         self.sock.sendto(str.encode(message), (self.server, self.port))
