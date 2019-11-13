@@ -40,7 +40,6 @@ class Sampler(threading.Thread):
         self.jobid = self.config.get(['options','jobid'])
         self.pidQueue = queue.Queue()
         self.pids = []
-        self.sampler_interval = self.config.get([self.id,"sampler_interval"],60)
 
     def init(self):
         pass
@@ -52,11 +51,10 @@ class Sampler(threading.Thread):
             logger.exception("Failed to do self.init in %s" % self.id,e)
         while True:
             try:
-                pids = self.pidQueue.get(timeout = self.sampler_interval)
+                pids = self.pidQueue.get(timeout = self.config.get([self.id,"sampler_interval"],60))
                 if not pids:
                     self.pidQueue.task_done()
                     break
-                logger.debug("Received new pids: %s", pids)
                 self.pids.extend(pids)
                 self.pidQueue.task_done()
             except queue.Empty as e:
@@ -128,9 +126,6 @@ class Backend(object):
     def update(self,updater):
         raise Exception("Not implemented")
 
-    def extract(self,xyz):
-        raise Exception("Not implemented")
-
 class Software(object):
     """ Software base class """
 
@@ -150,7 +145,7 @@ class Output(threading.Thread):
         self.config = config
 
         self.dataQueue = queue.Queue()
-        self.jobid = self.config.get(['options','jobid'])
+        self.jobid = self.config.get(['core','jobid'])
 
     def run(self):
         while True:
@@ -188,13 +183,3 @@ class Output(threading.Thread):
 
     def exit(self):
         self.dataQueue.put(None)
-
-class XMLWriter(object):
-    """ XMLWriter base class """
-
-    def __init__(self,id,config):
-        self.id = id
-        self.config = config
-
-    def write(self,data):
-        raise Exception("Not implemented")
