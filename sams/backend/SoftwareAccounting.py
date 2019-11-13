@@ -16,7 +16,6 @@ import sqlite3
 import os
 import re
 import sams.base
-from sams.core import Software, JobSoftware
 
 import logging
 logger = logging.getLogger(__name__)
@@ -24,25 +23,8 @@ logger = logging.getLogger(__name__)
 FIND_SOFTWARE = '''SELECT id,path FROM software WHERE software IS NULL'''
 UPDATE_SOFTWARE = '''
     UPDATE software 
-    SET software = :software, version = :version, versionstr = :versionstr, 
-        user_provided = :user_provided, ignore = :ignore, last_updated = strftime('%s','now')
-    WHERE id = :id
-'''
-EXTRACT_SOFTWARE = '''
-SELECT x.software,x.version,x.versionstr,x.jobid,x.recordid,
-        sum(x.cpu) as cpu,max(x.updated) as updated,x.user_provided
-FROM (
-             SELECT s.software,s.version,s.versionstr,j.jobid,sum(c.user+c.sys) as cpu, j.recordid, j.id,
-                    max(s.last_updated) as updated,s.user_provided
-             FROM software s, command c, jobs j
-             WHERE c.software = s.id and c.jobid = j.id and NOT s.ignore and
-                j.id in (select DISTINCT jobid from command where updated > :updated UNION
-                    select DISTINCT id from software  where last_updated > :updated)
-             GROUP BY s.software,s.version,s.versionstr,s.user_provided,j.jobid,j.recordid,j.id
-          ) x
-WHERE x.recordid is not null
-GROUP BY x.software,x.version,x.versionstr,x.jobid,recordid,x.user_provided
-ORDER BY x.jobid
+    SET software = ?, version = ?, versionstr = ?, user_provided = ? 
+    WHERE id = ?
 '''
 
 
@@ -52,7 +34,6 @@ class Backend(sams.base.Backend):
         super(Backend,self).__init__(id,config)
         self.db_path = self.config.get([self.id,'db_path'])
         self.file_pattern = re.compile(self.config.get([self.id,'file_pattern'],"sa-\d+.db"))
-        self.dry_run(False)
 
     def _open_db(self,db):
         """ Open database object """
@@ -66,13 +47,10 @@ class Backend(sams.base.Backend):
         dbs = map(lambda file: os.path.join(self.db_path,file), dbs)        
         return list(dbs)
 
-    def dry_run(self,dry):
-        self._dry_run = dry
-
     def update(self,software):
         """ Information aggregate method """
 
-        # Get databases
+        # Get database for jobid
         dbs = self.get_databases()
         for db in dbs:
             dbh = self._open_db(db)
@@ -85,51 +63,12 @@ class Backend(sams.base.Backend):
             for row in rows:
                 info = software.get(row[1])
                 if info:
-                    logger.debug(info)
-                    if not self._dry_run:
-                        c.execute(UPDATE_SOFTWARE,{ 'software': info['software'],'version': info['version']
-                                             ,'versionstr': info['versionstr'],'user_provided': info['user_provided'], 
-                                             'id': row[0], 'ignore': info['ignore'] })
+                    logger.debug(info) 
+                    c.execute(UPDATE_SOFTWARE,(info['software'],info['version']
+                                             ,info['versionstr'],info['user_provided'],row[0],))
             
             logger.info("Done")
             # Commit data to disk
-            if not self._dry_run: 
-                c.execute('COMMIT')
-                dbh.commit()
-            dbh.close()
-
-    def extract(self):
-        """ Software extract method """
-
-        jobs = {}
-        self.updated = {}
-        for db in self.get_databases():
-            dbh = self._open_db(db)
-            c = dbh.cursor()
-            updated = [ts for ts in c.execute('SELECT timestamp from last_sent')][0][0]
-            rows = [row for row in c.execute(EXTRACT_SOFTWARE,{'updated': updated})]
-            dbh.close()
-
-            for row in rows:
-                if not row[3] in jobs:
-                    jobs[row[3]] = JobSoftware(row[3],row[4])
-
-                jobs[row[3]].addSoftware(
-                    Software(row[0],row[1],row[2],row[7],row[5])
-                )
-
-                if updated < row[6]:
-                    updated = row[6]
-
-            self.updated[db] = updated
-
-        return jobs.values()
-
-    def commit(self):
-        """ Commits last used timestamp to database. """
-        for db in self.get_databases():
-            dbh = self._open_db(db)
-            c = dbh.cursor()
-            c.execute('UPDATE last_sent set timestamp = :timestamp', {'timestamp': self.updated[db]})
+            c.execute('COMMIT')
             dbh.commit()
             dbh.close()

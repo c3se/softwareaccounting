@@ -10,9 +10,6 @@ sams.backend.SoftwareAccounting:
     # Path to sqlite db files
     db_path: /data/softwareaccounting/CLUSTER/db
 
-    # clustername (used for calculating SGAS recordid)
-    clustername: CLUSTER
-
 """
 
 import sqlite3
@@ -40,7 +37,6 @@ TABLES = [
     CREATE TABLE IF NOT EXISTS jobs (
         id              INTEGER PRIMARY KEY AUTOINCREMENT,
         jobid           TEXT NOT NULL,
-        recordid        TEXT,
         user            INTEGER,
         project         INTEGER,        
         ncpus           INTEGER,
@@ -57,9 +53,7 @@ TABLES = [
         software        TEXT,
         version         TEXT,
         versionstr      TEXT,
-        user_provided   BOOLEAN,
-        ignore          BOOLEAN,
-        last_updated    INTEGER
+        user_provided   BOOLEAN
     );
     ''',
     '''
@@ -90,43 +84,14 @@ TABLES = [
     );
     ''',
     '''
-    CREATE TABLE IF NOT EXISTS last_sent (
-        timestamp      INTEGER
-    );
-    ''',
-    '''
-    INSERT INTO last_sent(timestamp) SELECT 0 WHERE NOT EXISTS(SELECT 1 FROM last_sent);
-    ''',
-    '''
     CREATE INDEX IF NOT EXISTS command_jobid_node_software_idx on command(jobid,node,software);
     ''',
-    '''
-    CREATE INDEX IF NOT EXISTS command_updated_idx on command(updated);
-    ''',
-    '''
-    CREATE INDEX IF NOT EXISTS software_last_updated_idx on software(last_updated);
-    ''',
-    '''
-    CREATE INDEX IF NOT EXISTS jobs_jobid_idx on jobs(jobid);
-    ''',
-    '''
-    CREATE INDEX IF NOT EXISTS jobs_start_time_idx on jobs(start_time);
-    ''',
-    '''
-    CREATE INDEX IF NOT EXISTS jobs_end_time_idx on jobs(end_time);
-    ''',
-    '''
-    CREATE INDEX IF NOT EXISTS jobs_user_time_idx on jobs(user_time);
-    ''',
-    '''
-    CREATE INDEX IF NOT EXISTS jobs_system_time_idx on jobs(system_time);
-    '''
 ]
 
 # Update/Insert SQL
 INSERT_USER=''' insert or replace into users (id,user) values ((select ID from users where user = :user), :user); '''
 INSERT_PROJECT=''' insert or replace into projects (id,project) values ((select ID from projects where project = :project), :project); '''
-INSERT_JOBS=''' insert or replace into jobs (id,jobid,user,project,ncpus,recordid) values ((select ID from jobs where jobid = :jobid), :jobid, :user ,:project, :ncpus, :recordid); '''
+INSERT_JOBS=''' insert or replace into jobs (id,jobid,user,project,ncpus) values ((select ID from jobs where jobid = :jobid), :jobid, :user ,:project, :ncpus); '''
 INSERT_NODE=''' insert or replace into node (id,node) values ((select ID from node where node = :node), :node); '''
 INSERT_SOFTWARE=''' insert or replace into software (id,path) values ((select ID from software where path = :software), :software); '''
 INSERT_COMMAND='''
@@ -173,9 +138,8 @@ class Aggregator(sams.base.Aggregator):
         super(Aggregator,self).__init__(id,config)
         self.db = {}
         self.db_path = self.config.get([self.id,'db_path'])
-        self.cluster = self.config.get([self.id,'cluster'])
         self.file_pattern = self.config.get([self.id,'file_pattern'],"sa-%(jobid_hash)d.db")
-        self.jobid_hash_size = self.config.get([self.id,'jobid_hash_size'],0)
+        self.jobid_hash_size = self.config.get([self.id,'jobid_hash_size'],1000000000)
         self.inserted = {}
 
     def _open_db(self,jobid_hash):
@@ -192,18 +156,14 @@ class Aggregator(sams.base.Aggregator):
 
     def get_db(self,jobid):
         """ get db connection based on jobid / jobid_hash_size """
-        jobid_hash = 0
-        if self.jobid_hash_size > 0:
-            jobid_hash = int(jobid / self.jobid_hash_size)
+        jobid_hash = int(jobid / self.jobid_hash_size)
         if jobid_hash in self.db:
             return self.db[jobid_hash]
         return self._open_db(jobid_hash)
 
     def save_id(self,jobid,table,value,id):
         """ Only try to insert once / session """
-        jobid_hash = 0
-        if self.jobid_hash_size > 0:
-            jobid_hash = int(jobid / self.jobid_hash_size)
+        jobid_hash = int(jobid / self.jobid_hash_size)
         if value not in self.inserted[jobid_hash][table]:
             self.inserted[jobid_hash][table][value] = id
         logger.debug("save_id(%d (%d),%s,%s,%d)" % (jobid,jobid_hash,table,value,id))
@@ -211,17 +171,13 @@ class Aggregator(sams.base.Aggregator):
 
     def get_id(self,jobid,table,value):
         """ Only try to insert once / session """
-        jobid_hash = 0
-        if self.jobid_hash_size > 0:
-            jobid_hash = int(jobid / self.jobid_hash_size)
+        jobid_hash = int(jobid / self.jobid_hash_size)
         logger.debug("get_id(%d (%d),%s,%s,%d)" % (jobid,jobid_hash,table,value,self.inserted[jobid_hash][table][value]))
         return self.inserted[jobid_hash][table][value]
 
     def do_insert(self,jobid,table,value):
         """ Only try to insert once / session """
-        jobid_hash = 0
-        if self.jobid_hash_size > 0:
-            jobid_hash = int(jobid / self.jobid_hash_size)
+        jobid_hash = int(jobid / self.jobid_hash_size)
         if jobid_hash not in self.inserted:
             self.inserted[jobid_hash] = {}
         if table not in self.inserted[jobid_hash]:
@@ -275,20 +231,13 @@ class Aggregator(sams.base.Aggregator):
                 user_id = self.get_id(jobid,'users',user)
                 logger.debug("Fetched user: %s as %d" % (user,user_id))
 
-
-        recordid = None
-        if 'starttime' in data['sams.sampler.SlurmInfo']:
-            starttime = data['sams.sampler.SlurmInfo']['starttime']
-            starttime = starttime.replace('-','').replace('T','').replace(':','')
-            recordid = "%s:%s:%s" % (self.cluster,jobid,starttime)
-
         # If username is defined in data insert into table
         ncpus = None
         if 'cpus' in data['sams.sampler.SlurmInfo']:
             ncpus = data['sams.sampler.SlurmInfo']['cpus']
     
         # Insert information about job
-        c.execute(INSERT_JOBS,{'jobid': jobid, 'user':user,'project':project,'ncpus':ncpus, 'recordid': recordid})
+        c.execute(INSERT_JOBS,{'jobid': jobid, 'user':user,'project':project,'ncpus':ncpus})
         id = c.lastrowid
 
         # Insert node
