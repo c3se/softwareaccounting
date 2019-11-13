@@ -1,11 +1,14 @@
 """
-Fetches the path and cpu usage of the running processes.
+Fetches Metrics from Slurm command
 
 Config options:
 
 sams.sampler.Software:
     # in seconds
     sampler_interval: 100
+
+    # path to scontrol command
+    scontrol: /usr/local/bin/scontrol
 
 Output:
 Every sample:
@@ -51,8 +54,13 @@ class Process:
         try:
             self.exe = os.readlink('/proc/%d/exe' % self.pid)
             logger.debug("Pid: %d (JobId: %d) has exe: %s",pid,jobid,self.exe)
+        except OSError as err:
+            logger.debug("Pid: %d (JobId: %d) has no exe or pid has disapeard",pid,jobid)
+            self.ignore = True
+            return
         except Exception as err:
             logger.debug("Pid: %d (JobId: %d) has no exe or pid has disapeard",pid,jobid)
+            logger.info("No pids found 0 (%d), Exception: %s" % (self.pid, type(err)))
             self.ignore = True
             return
 
@@ -80,11 +88,18 @@ class Process:
         try:
             tasks = filter(lambda f: re.match('^\d+$',f),os.listdir('/proc/%d/task' % self.pid))
             tasks = map(lambda t: int(t),tasks)
-        except Exception as err:
-            logger.debug("Failed to read /proc/%d/task, most likely due to process ending",self.pid)
+        except OSError as err:
+            # Ignore if no tasks exists anymore (missing pid)
+            logger.debug("No pids left/or no pids yet, considering done: %d" % self.pid)
             self.done = True
             return
-
+        except Exception as err:
+            # Ignore if no tasks exists anymore (missing pid)
+            logger.debug("No pids left/or no pids yet, considering done: %d" % self.pid)
+            logger.info("No pids found 1 (%d), Exception: %s" % (self.pid, type(err)))
+            self.done = True
+            return
+        
         for task in tasks:
             try:
                 with open('/proc/%d/task/%d/stat' % (self.pid,task)) as f:
@@ -97,9 +112,17 @@ class Process:
                     logger.debug("Task usage for pid: %d, task: %d, user: %f, system: %f", 
                                     self.pid, task, stats['user'], stats['system'])
                     
-            except Exception as err:
+            except IOError as err:
                 logger.debug("Ignore missing task for pid: %d", self.pid)
                 self.done = True
+                # Ignore missing task (or pid)
+                pass
+            except Exception as err:
+                logger.debug("Ignore missing task for pid: %d", self.pid)
+                logger.info("No pids found 2 (%d, %d), exception: %s" % (self.pid, task, type(err)))
+                self.done = True
+                # Ignore missing task (or pid)
+                pass
 
         self.updated = time.time()      
 
@@ -137,18 +160,15 @@ class Sampler(sams.base.Sampler):
         aggr,total = self._aggregate()
         if self.last_sample_time:            
             time_diff = time.time()-self.last_sample_time
-            if time_diff > self.sampler_interval/2:
-                self.store({
-                    'current': {
-                        'user': (total['user']-self.last_total['user'])/time_diff,
-                        'system': (total['system']-self.last_total['system'])/time_diff
-                    }
-                })
-                self.last_total = total
-                self.last_sample_time = time.time()
-        else:
-            self.last_total = total
-            self.last_sample_time = time.time()
+            self.store({
+                'current': {
+                    'user': (total['user']-self.last_total['user'])/time_diff,
+                    'system': (total['system']-self.last_total['system'])/time_diff
+                }
+            })
+
+        self.last_total = total
+        self.last_sample_time = time.time()
 
     def last_updated(self):
         procs = list(filter(lambda p: not p.ignore,self.processes.values()))

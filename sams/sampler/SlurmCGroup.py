@@ -7,7 +7,7 @@ sams.sampler.SlurmCGroup:
     # in seconds
     sampler_interval: 100
 
-    cgroup_base: /cgroup
+    cgroup_base_path: /cgroup
 
 Output:
 {
@@ -62,7 +62,7 @@ class Sampler(sams.base.Sampler):
                     if m:
                         self.cgroup = m.group(1)
                         return True
-            except Exception as e:
+            except IOError as e:
                 logger.debug("Failed to fetch cpuset for pid: %d", self.pids[0])
         return False
 
