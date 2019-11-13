@@ -12,7 +12,6 @@ sams.software.Regexp:
           version: "%(version)s"
           versionstr: "Core/%(software)s/%(version)s"
           user_provided: true
-          ignore: false
 
 """
 import sams.base
@@ -38,15 +37,11 @@ class Software(sams.base.Software):
                 up = False
                 if 'user_provided' in rule:
                     up = rule['user_provided']
-                ig = False
-                if 'ignore' in rule:
-                    ig = rule['ignore']
                 return {
                     'software': rule['software'] % d,
                     'version': rule['version'] % d,
                     'versionstr': rule['versionstr'] % d,
                     'user_provided': up,
-                    'ignore': ig
                 }
             
         logging.info("Path not found: %s" % path)
