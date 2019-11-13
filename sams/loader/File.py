@@ -42,7 +42,7 @@ class Loader(sams.base.Loader):
         try:
             with open(filename,"r") as file:
                 return json.load(file)
-        except Exception as e:
+        except IOError as e:
             logger.error("Failed to load: %s", filename)
         except ValueError as e:
             logger.error("Failed to decode JSON in file: %s", filename)
@@ -56,7 +56,7 @@ class Loader(sams.base.Loader):
         if not os.path.isdir(out_path):
             try:
                 os.mkdir(out_path)
-            except Exception as err:
+            except IOError as err:
                 # Handle possible raise from other process
                 if not os.path.isdir(out_path):
                     assert False, "Failed to mkdir '%s' " % out_path
@@ -76,7 +76,7 @@ class Loader(sams.base.Loader):
         if not os.path.isdir(out_path):
             try:
                 os.mkdir(out_path)
-            except Exception as err:
+            except IOError as err:
                 # Handle possible raise from other process
                 if not os.path.isdir(out_path):
                     assert False, "Failed to mkdir '%s' " % out_path
