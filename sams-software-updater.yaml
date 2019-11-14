@@ -7,75 +7,78 @@ sams.software-updater:
 
 sams.backend.SoftwareAccounting:
   file_pattern: 'sa-\d+.db'
-  db_path: /data/softwareaccounting/CLUSTER/db
+  db_path: /local/SoftwareAccounting/
 
 sams.software.Regexp:
   rules:
-    - match: '^/lap/slurm/(?P<version>[^/]+)/'
-      software: slurm
-      version: "%(version)s"
-      versionstr: ""
-      ignore: true
-    - match: '^/lap/(?P<software>[^/]+)/'
-      software: lap
-      version: "%(software)s"
-      versionstr: ""
     - match: '^/usr/'
       software: system
       version: "/usr/"
       versionstr: ""
-    - match: '^/scratch/'
-      software: user
-      version: "/scratch/"
-      versionstr: ""
-      user_provided: true
-    - match: '^/tmp/'
-      software: user
-      version: "/tmp/"
-      versionstr: ""
-      user_provided: true
     - match: '^/(?P<path>s?bin)/'
       software: "system"
       version: "/%(path)s/"
       versionstr: ""
-      ignore: true
-    - match: '^/pfs/nobackup/home/./(?P<username>[^/]+)/'
-      software: "user_pfs"
-      version: "%(username)s"
-      versionstr: ""
-      user_provided: true
-    - match: '^/pfs/nobackup/projects/(?P<class>[^/]+/[^/]+)/(?P<project>[^/]+)/'
-      software: "pfs_projects"
-      version: "%(project)s"
-      versionstr: "%(class)s"
-      user_provided: true
-    - match: '^/afs/hpc2n.umu.se/lap/(?P<software>[^/]+)/(?P<version>[^/]+)/'
-      software: "%(software)s"
-      version: "%(version)s"
-      versionstr: ""
-      user_provided: true
-    - match: '^/afs/hpc2n.umu.se/home/./(?P<username>[^/]+)/'
-      software: "user_afs"
-      version: "%(username)s"
-      versionstr: ""
-      user_provided: true
-    - match: '^/pfs/software/eb/[^/]+/software/Core/(?P<software>[^/]+)/(?P<version>[^/]+)/'
+    - match: '^/apps/Hebbe/software/Core/(?P<software>[^/]+)/(?P<version>[^/]+)/'
       software: "%(software)s"
       version: "%(version)s"
       versionstr: "Core/%(software)s/%(version)s"
-    - match: '^/pfs/software/eb/[^/]+/software/Compiler/(?P<vstr>[^/]+/[^/]+)/(?P<software>[^/]+)/(?P<version>[^/]+)'
+    - match: '^/apps/Hebbe/software/Compiler/(?P<vstr>[^/]+/[^/]+)/(?P<software>[^/]+)/(?P<version>[^/]+)'
       software: "%(software)s"
       version: "%(version)s"
-      versionstr: "Core/%(vstr)s/%(software)s/%(version)s"
-    - match: '^/pfs/software/eb/[^/]+/software/MPI/(?P<vstr>[^/]+/[^/]+/[^/]+/[^/]+)/(?P<software>[^/]+)/(?P<version>[^/]+)'
-      software: "%(software)s"
-      version: "%(version)s"
-      versionstr: "MPI/%(vstr)s/%(software)s/%(version)s"
-    - match: '^/pfs/software/eb/[^/]+/software/MPI/(?P<vstr>[^/]+/[^/]+/[^/]+/[^/]+)/(?P<software>[^/]+)/(?P<version>[^/]+)'
+      versionstr: "Compiler/%(vstr)s/%(software)s/%(version)s"
+    - match: '^/apps/Hebbe/software/MPI/(?P<vstr>[^/]+/[^/]+/[^/]+/[^/]+)/(?P<software>[^/]+)/(?P<version>[^/]+)'
       software: "%(software)s"
       version: "%(version)s"
       versionstr: "MPI/%(vstr)s/%(software)s/%(version)s"
-    - match: '^/var/lib/singularity/'
+    - match: '^/apps/Hebbe/software/MPI/(?P<vstr>[^/]+/[^/]+/[^/]+/[^/]+)/(?P<software>[^/]+)/(?P<version>[^/]+)'
+      software: "%(software)s"
+      version: "%(version)s"
+      versionstr: "MPI/%(vstr)s/%(software)s/%(version)s"
+    - match: '^/apps/Common/Core/(?P<software>[^/]+)/(?P<version>[^/]+)/'
+      software: "%(software)s"
+      version: "%(version)s"
+      versionstr: "Core/%(software)s/%(version)s"
+    - match: '^/apps/Common/External/(?P<software>[^/]+)/(?P<version>[^/]+)/'
+      software: "%(software)s"
+      version: "%(version)s"
+      versionstr: "External/%(software)s/%(version)s"
+    - match: '^/c3se/apps/Hebbe/MaterialsStudio/MaterialsStudio7.0/'
+      software: "MaterialStudio"
+      version: "7.0"
+      versionstr: ""
+    - match: '^/var/singularity/'
       software: "singularity"
       version: ""
       versionstr: ""
+    - match: '/c3se/(\w*/)?(?:users|groups)/(.+)/OpenFOAM/(?P<version>[^/]+)/'
+      software: "OpenFOAM"
+      version: "%(version)s"
+      versionstr: ""
+      user_provided: true
+    - match: '^/c3se/(\w*/)?users/(?P<username>[^/]+)/'
+      software: "user"
+      version: "%(username)s"
+      versionstr: ""
+      user_provided: true
+    - match: '^/c3se/(\w*/)?users/(?P<username>[^/]+)/'
+      software: "user"
+      version: "%(username)s"
+      versionstr: ""
+      user_provided: true
+    - match: '^/c3se/(\w*/)?groups/(?P<groupname>[^/]+)/'
+      software: "group"
+      version: "%(groupname)s"
+      versionstr: ""
+      user_provided: true
+    - match: '^/(\w*/)?priv/(?P<groupname>[^/]+)/'
+      software: "group"
+      version: "%(groupname)s"
+      versionstr: ""
+      user_provided: true
+    - match: '^/local/tmp.(?P<jobno>[^/]+)/'
+      software: "user"
+      version: "%(jobno)s"
+      versionstr: ""
+      user_provided: true
+

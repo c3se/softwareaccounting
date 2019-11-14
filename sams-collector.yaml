@@ -6,10 +6,9 @@ sams.collector:
     - sams.sampler.Core
     - sams.sampler.Software
     - sams.sampler.SlurmInfo
+#    - sams.sampler.SlurmCGroup
   outputs:
-    - sams.output.Http
     - sams.output.File
-    - sams.output.Carbon
 
   # logfile: /tmp/logfile.%(jobid)s.%(node)s.log
   loglevel: ERROR
@@ -19,36 +18,28 @@ sams.pidfinder.Slurm:
 
 sams.sampler.SlurmInfo:
   sampler_interval: 30
+  scontrol: /usr/bin/scontrol
 
 sams.sampler.Software:
   sampler_interval: 30
 
+sams.sampler.SlurmCGroup:
+  sampler_interval: 10
+  cgroup_base_path: /cgroup
+
 sams.output.File:
-  base_path: /scratch/softwareaccounting/data
+  base_path: /var/spool/sams
   file_pattern: "%(jobid)s.%(node)s.json"
   jobid_hash_size: 1000
   # write_as_uid: 2066
   exclude: ['sams.sampler.SlurmCGroup']
-
-sams.output.Http:
-  uri: "https://etui.hpc2n.umu.se:8443/%(jobid_hash)d/%(filename)s"
-  jobid_hash_size: 10000
-  key_file: /etc/grid-security/accounting.swegrid.se.key.pem
-  cert_file: /etc/grid-security/accounting.swegrid.se.cert.pem
-  username: 'sams'
-  password: 'sams'
-  exclude: ['sams.sampler.SlurmCGroup']
-
-sams.output.Carbon:
-  server: fot-kvm.hpc2n.umu.se
-  port: 2003
 
   map:
     jobid: sams.sampler.Core/jobid
     node: sams.sampler.Core/node
 
   static_map:
-    cluster: kebnekaise
+    cluster: hebbe
 
   metrics:
     '^sams.sampler.SlurmCGroup/(?P<metric>\S+)$' : 'sa/%(cluster)s/%(jobid)s/%(node)s/%(metric)s'

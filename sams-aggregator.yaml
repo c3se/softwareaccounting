@@ -8,13 +8,13 @@ sams.aggregator:
   loglevel: ERROR
 
 sams.loader.File:
-  in_path: /data/softwareaccounting/data
-  archive_path: /data/softwareaccounting/archive
-  error_path: /data/softwareaccounting/error
+  in_path: /c3se/apps/SoftwareAccounting/data
+  archive_path: /c3se/apps/SoftwareAccounting/Hebbe/archive
+  error_path: /c3se/apps/SoftwareAccounting/Hebbe/error
   file_pattern: '^.*\.json$'
 
 sams.aggregator.SoftwareAccounting:
   jobid_hash_size: 300000000
   file_pattern: "sa-%(jobid_hash)d.db"
-  db_path: /data/softwareaccounting/db
-  cluster: CLUSTER.hpc2n.umu.se
+  db_path: /local/SoftwareAccounting/
+  cluster: hebbe.c3se.chalmers.se
