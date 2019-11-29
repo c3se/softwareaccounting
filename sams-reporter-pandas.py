@@ -7,6 +7,7 @@ import pandas as pd
 
 from time import mktime
 from datetime import datetime
+import dateutil
 
 class CommaSeparatedStringsAction(argparse.Action):
     def __init__(self, option_strings, dest, nargs=None, **kwargs):
@@ -14,32 +15,54 @@ class CommaSeparatedStringsAction(argparse.Action):
             raise ValueError("nargs not allowed")
         super(CommaSeparatedStringsAction, self).__init__(option_strings, dest, **kwargs)
     def __call__(self, parser, namespace, values, option_string=None):
-        print('%r %r %r' % (namespace, values, option_string))
+        #print('%r %r %r' % (namespace, values, option_string))
         values = values.split(',')
         setattr(namespace, self.dest, values)
 
 strings_opt = dict(type=str, default=[], action=CommaSeparatedStringsAction)
 
 parser = argparse.ArgumentParser(description='Generate report on software usage')
-parser.add_argument('-s', '--software', help='Only consider jobs using the given software(s)', **strings_opt)
-parser.add_argument('-Is', '--ignore-software', help='Ignore jobs using the given software(s)', **strings_opt)
-parser.add_argument('-u', '--user', help='Only consider jobs for the given user(s)', **strings_opt)
-parser.add_argument('-Iu', '--ignore-user', help='Ignore jobs for the given user(s)', **strings_opt)
-parser.add_argument('-a', '--project', help='Only consider jobs for the given project(s)', **strings_opt)
-parser.add_argument('-Ia', '--ignore-project', help='Ignore jobs for the given project(s)', **strings_opt)
+
+p_gen = parser.add_argument_group('General options')
+p_gen.add_argument(
+    '-f', '--filename', help='DB-file to get data from',
+    type=str, default='sa-0.db')
+
+p_time = parser.add_argument_group('Time options')
+p_time.add_argument(
+    '-b', '--begin', help='Beginning of time interval',
+    type=dateutil.parser.parse, default=dateutil.parser.parse('2010-01-10'))
+p_time.add_argument(
+    '-e', '--end', help='End of time interval',
+    type=dateutil.parser.parse, default=datetime.now())
+
+p_select = parser.add_argument_group('Selection options')
+p_select.add_argument(
+    '-s', '--software', help='Only consider jobs using the given software(s)',
+    **strings_opt)
+p_select.add_argument(
+    '-Is', '--ignore-software', help='Ignore jobs using the given software(s)',
+    **strings_opt)
+p_select.add_argument(
+    '-u', '--user', help='Only consider jobs for the given user(s)',
+    **strings_opt)
+p_select.add_argument(
+    '-Iu', '--ignore-user', help='Ignore jobs for the given user(s)',
+    **strings_opt)
+p_select.add_argument(
+    '-a', '--project', help='Only consider jobs for the given project(s)',
+    **strings_opt)
+p_select.add_argument(
+    '-Ia', '--ignore-project', help='Ignore jobs for the given project(s)',
+    **strings_opt)
+
 args = parser.parse_args()
 
-print(args)
-#exit()
-
-filename = 'sa-0.db'
 print('--> sqlite3 connect')
-conn = sqlite3.connect('file:{}?mode=ro'.format(filename), uri=True)
+conn = sqlite3.connect('file:{}?mode=ro'.format(args.filename), uri=True)
 
-start = int(datetime.strptime('2019-11-01', '%Y-%m-%d').timestamp())
-stop = int(datetime.strptime('2019-11-05', '%Y-%m-%d').timestamp())
-
-print(datetime.fromtimestamp(start), datetime.fromtimestamp(stop))
+start = int(args.begin.timestamp())
+stop = int(args.end.timestamp())
 
 print('--> software')
 softwares = pd.read_sql_query("select * from software;", conn)
@@ -51,11 +74,11 @@ commands = pd.read_sql_query(
     "select * from command where end_time >= {} AND start_time <= {};".format(start, stop), conn)
 commands.rename(columns={'software':'software_id'}, inplace=True)
 commands.rename(columns={'jobid':'job_id'}, inplace=True)
-
 print(commands.columns)
 
 print('--> jobs')
-jobs = pd.read_sql_query("select * from jobs where end_time >= {} AND start_time <= {};".format(start, stop), conn)
+jobs = pd.read_sql_query(
+    "select * from jobs where end_time >= {} AND start_time <= {};".format(start, stop), conn)
 jobs.rename(columns={'jobid':'slurm_id'}, inplace=True)
 
 print(jobs.columns)
@@ -89,31 +112,11 @@ jobs.user_time = pd.to_timedelta(jobs.user_time, unit='s')
 jobs.system_time = pd.to_timedelta(jobs.system_time, unit='s')
 jobs.total_time = jobs.user_time + jobs.system_time
 jobs.cpu_time = jobs.total_time * jobs.ncpus
-## -- Check that jobid:s are everywhere
-#for job_id in jobs.id:
-#    print(job_id)
-#    print(( commands.job_id == job_id ).sum())
-#    assert( ( commands.job_id == job_id ).sum() == 1 )
-#exit()
-
-# for each software
-# usage per user and project
-# total usage
-
-#print(softwares)
-#print(softwares.columns)
-
-#print(commands)
-#print(commands.columns)
-#print(commands.software)
 
 for software in softwares.itertuples():
-    #print(row)
     job_ids = commands[commands.software_id == software.id].job_id
     if len(job_ids) == 0:
         continue
-    #print('job_ids:\n', list(job_ids))
-    #print('jobs.id:\n', list(jobs.id))
     jobs = jobs[ jobs.id.isin(job_ids) ]
 
     if len(jobs) > 0:
