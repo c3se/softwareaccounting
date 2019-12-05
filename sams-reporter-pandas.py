@@ -211,7 +211,7 @@ if __name__ == '__main__':
     index_names = list(column_labels.values())
     sdf.index.set_names(index_names, inplace=True)
 
-    def recurse_indices(df, column_key, recursion_level=0, prev_index={}):
+    def recurse_indices(df, column_key, prev_index={}):
         """ Recurse indices to compute relative percentage of `column_key` 
         for each sub-group of indices. Returns a list of (key, value) pair dicts. """
 
@@ -239,21 +239,13 @@ if __name__ == '__main__':
                 row.update(df_agg.loc[key])
                 rows.append(row.copy())
             else:
-                rows += recurse_indices(
-                    df.loc[key], column_key,
-                    recursion_level=recursion_level + 1, prev_index=index)
+                rows += recurse_indices(df.loc[key], column_key, prev_index=index)
 
         return rows
 
-    if args.sort_time:
-        column_key = 'cpu_time'
-        print('Percentage of time (core-hours).')
-    elif args.sort_jobs:
-        column_key = 'no_jobs'
-        print('Percentage of total number of jobs.')
-    elif args.sort_cpus:
-        column_key = 'no_cpus'
-        print('Percentage of average number of cpus per hour.')
+    if args.sort_time: column_key = 'cpu_time'
+    elif args.sort_jobs: column_key = 'no_jobs'
+    elif args.sort_cpus: column_key = 'no_cpus'
     else: column_key = 'cpu_time'
         
     # -- Recurse and put result in a pandas data frame for printing
@@ -271,4 +263,7 @@ if __name__ == '__main__':
     formatters.update({ 'no_cpus' : lambda x : '{:3.1f}'.format(x) })
 
     # -- Print table
+    if column_key is 'cpu_time': print('Percentage of time (core-hours).')
+    if column_key is 'no_jobs': print('Percentage of total number of jobs.')
+    if column_key is 'no_cpus': print('Percentage of average number of cpus per hour.')
     print(summary.to_string(formatters=formatters, header=['Time (Core-h)', 'Jobs', 'Cpus/h']))
