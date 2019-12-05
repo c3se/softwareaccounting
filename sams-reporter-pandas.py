@@ -1,8 +1,8 @@
 """
 Read SAMS Software Accounting sqllite3 database and produce accumulated report.
 
-Authors: Thomas Svedberg (2019)
-         Hugo U.R. Strand (2019) 
+Authors: Hugo U.R. Strand (2019) 
+         Thomas Svedberg (2019)
 
 """
 
@@ -38,7 +38,7 @@ def get_args():
     p_gen.add_argument('-v', '--verbose', action='store_true', help='Verbose output')
 
     p_sort= parser.add_argument_group('Sort options').add_mutually_exclusive_group()
-    p_sort.add_argument('-st', '--sort_time', action='store_true', help='Sort on time (core-h) usage')
+    p_sort.add_argument('-st', '--sort_time', action='store_true', help='Sort on time (core-h) usage (default)')
     p_sort.add_argument('-sj', '--sort_jobs', action='store_true', help='Sort on number of jobs')
     p_sort.add_argument('-sc', '--sort_cpus', action='store_true', help='Sort on number of cpus/h')
     
@@ -84,18 +84,19 @@ class SAMSSoftwareAccountingDB:
         self.args = args
         self.verbose = args.verbose
 
-        if self.verbose: print(self.args)
-        
+        self._print_header()
         self._open_db()
         self._load_tables()
-        self._print_column_labels()
         self._filter_tables()
         self._compute_times()
-        self._print_column_labels()
+        #self._print_column_labels()
         self._combine_tables()
 
+    def _print_header(self):
+        if self.verbose: print('Loading SAMS-Software Accounting data from', self.args.begin, 'to', self.args.end)
+        
     def _open_db(self):
-        if self.verbose: print('Loading sqlite3 database file: {}'.format(args.filename))
+        if self.verbose: print('Using sqlite3 database file: {}'.format(args.filename))
         self.conn = sqlite3.connect('file:{}?mode=ro'.format(args.filename), uri=True)
 
     def _load_tables(self):
@@ -188,13 +189,14 @@ class SAMSSoftwareAccountingDB:
         data = data.join(self.jobs.set_index('id'), on='job_id')
         data = data.join(self.softwares.set_index('id'), on='software_id')
         self.data = data
+
+    def get_pandas_data_frame(self):
+        return self.data.copy()
         
 if __name__ == '__main__':
 
     args = get_args()
     sdb = SAMSSoftwareAccountingDB(args)
-
-    data = sdb.data.copy()
 
     column_labels = { 'name' : 'Software' }
     if args.list_version: column_labels['version'] = 'Version'
@@ -203,13 +205,15 @@ if __name__ == '__main__':
 
     agg_opts = {'total_time' : 'sum', 'cpu_time' : 'sum', 'no_jobs' : 'sum'}    
 
-    total = data.groupby(list(column_labels.keys()))
-    total = total.agg(agg_opts)
-    total.index.set_names(column_labels.values(), inplace=True)
+    sdf = sdb.get_pandas_data_frame()
+    sdf = sdf.groupby(list(column_labels.keys()))
+    sdf = sdf.agg(agg_opts)
+    index_names = list(column_labels.values())
+    sdf.index.set_names(index_names, inplace=True)
 
     def recurse_indices(df, column_key, recursion_level=0, prev_index={}):
-        """ Recurse indices and compute relative percentage of `column_key` 
-        for each sub-group of indices. """
+        """ Recurse indices to compute relative percentage of `column_key` 
+        for each sub-group of indices. Returns a list of (key, value) pair dicts. """
 
         # -- sum over all under key
         index_name = df.index.names[0]
@@ -240,13 +244,25 @@ if __name__ == '__main__':
                     recursion_level=recursion_level + 1, prev_index=index)
 
         return rows
-                
-    rows = recurse_indices(df=total, column_key='cpu_time')
 
+    if args.sort_time:
+        column_key = 'cpu_time'
+        print('Percentage of time (core-hours).')
+    elif args.sort_jobs:
+        column_key = 'no_jobs'
+        print('Percentage of total number of jobs.')
+    elif args.sort_cpus:
+        column_key = 'no_cpus'
+        print('Percentage of average number of cpus per hour.')
+    else: column_key = 'cpu_time'
+        
+    # -- Recurse and put result in a pandas data frame for printing
+    rows = recurse_indices(df=sdf, column_key=column_key)
+    
     column_labels = ['cpu_time', 'no_jobs', 'no_cpus']
     agg_opts = { label : 'sum' for label in column_labels }
-    tmp = pd.DataFrame(rows, columns = total.index.names + column_labels)
-    tmp = tmp.groupby(total.index.names, sort=False).agg(agg_opts)
+    summary = pd.DataFrame(rows, columns = index_names + column_labels)
+    summary = summary.groupby(index_names, sort=False).agg(agg_opts)
 
     # -- Set up column data formatters
     formatters = dict()
@@ -254,73 +270,5 @@ if __name__ == '__main__':
     formatters.update({ 'no_jobs' : lambda x : '{:3.0f}'.format(x) })
     formatters.update({ 'no_cpus' : lambda x : '{:3.1f}'.format(x) })
 
-    print(tmp.to_string(formatters=formatters, header=['Time (Core-h)', 'Jobs', 'Cpus/h']))
-
-    exit()
-    
-    total['cpu_time_percent'] = 0
-    
-    softwares = set(total.index.get_level_values('Software'))
-    rows = []
-    for software in softwares:
-        #print(software)
-
-        s = total.loc[software].sum()
-        s['cpu_time_percent'] = 100. * s['cpu_time'] / total.cpu_time.sum()        
-        rows.append( ((software, '', '', ''), s) )
-
-        versions = set(total.loc[software].index.get_level_values('Version'))        
-        for version in versions:
-
-            s = total.loc[software, version].sum()
-            s['cpu_time_percent'] = 100. * s['cpu_time'] / total.loc[software].cpu_time.sum()        
-            rows.append( ((software, version, '', ''), s) )
-
-            projects = set(total.loc[software, version].index.get_level_values('Project'))
-            for project in projects:
-
-                s = total.loc[software, version, project].sum()
-                s['cpu_time_percent'] = 100. * s['cpu_time'] / total.loc[
-                    software, version].cpu_time.sum()        
-                rows.append( ((software, version, project, ''), s) )
-
-                # -- compute user percent in project
-                users = total.loc[software, version, project]
-                users['cpu_time_percent'] = 100. * users['cpu_time'] / users.cpu_time.sum()
-                #total.loc[software, version, project] = users
-        
-    #exit()
-    for idx, row in rows:
-        total.loc[idx] = row
-    total.sort_index(level=0, inplace=True)
-
-
-    if False:
-        print(total.index[0])
-        print(total.loc[total.index[0]])
-        s = total.loc['VASP', '5.4.4.10112017-vtst'].sum()
-        total.loc[('VASP', '5.4.4.10112017-vtst', '', '')] = s
-        total.sort_index(level=1, inplace=True)
-
-    # -- Set up column data formatters
-    formatters = dict()
-    formatters.update({ key : lambda x : '{:2.1f}'.format(x) for key in total.columns if 'percent' in key })
-    formatters.update({ 'cpu_time' : lambda x : '{:10.0f}'.format(x) })
-    formatters.update({ 'ncpus' : lambda x : '{:3.0f}'.format(x) })
-
-    print(total.to_string(
-        #header=[ 'Core-h', 'Cpus/h', ],
-        formatters=formatters))
-
-    exit()
-
-    project_total = data.groupby(['project', 'name'])
-    project_total = project_total.agg({'total_time' : 'sum', 'cpu_time' : 'sum'})
-    project_total = project_total.sort_values(by='cpu_time', ascending=False)
-    print(project_total)
-
-    user_total = data.groupby(['job_user', 'name'])
-    user_total = user_total.agg({'total_time' : 'sum', 'cpu_time' : 'sum'})
-    user_total = user_total.sort_values(by='cpu_time', ascending=False)
-    print(user_total)
-    
+    # -- Print table
+    print(summary.to_string(formatters=formatters, header=['Time (Core-h)', 'Jobs', 'Cpus/h']))
