@@ -9,6 +9,7 @@ Authors: Thomas Svedberg (2019)
 import argparse
 
 import sqlite3
+import numpy as np
 import pandas as pd
 
 import dateutil
@@ -35,6 +36,16 @@ def get_args():
         '-f', '--filename', help='DB-file to get data from',
         type=str, default='sa-0.db')
     p_gen.add_argument('-v', '--verbose', action='store_true', help='Verbose output')
+
+    p_sort= parser.add_argument_group('Sort options').add_mutually_exclusive_group()
+    p_sort.add_argument('-st', '--sort_time', action='store_true', help='Sort on time (core-h) usage')
+    p_sort.add_argument('-sj', '--sort_jobs', action='store_true', help='Sort on number of jobs')
+    p_sort.add_argument('-sc', '--sort_cpus', action='store_true', help='Sort on number of cpus/h')
+    
+    p_list = parser.add_argument_group('List selection')
+    p_list.add_argument('-lv', '--list_version', action='store_true', help='Show software versions')
+    p_list.add_argument('-lp', '--list_project', action='store_true', help='Show project names')
+    p_list.add_argument('-lu', '--list_user', action='store_true', help='Show user names')
 
     p_time = parser.add_argument_group('Time options')
     p_time.add_argument(
@@ -166,7 +177,8 @@ class SAMSSoftwareAccountingDB:
         jobs['total_time'] = jobs.user_time + jobs.system_time
         jobs.total_time /= timedelta(hours=1)
         
-        jobs['cpu_time'] = jobs.total_time * jobs.ncpus 
+        jobs['cpu_time'] = jobs.total_time * jobs.ncpus
+        jobs['no_jobs'] = 1
         
         self.softwares, self.commands, self.jobs = softwares, commands, jobs
 
@@ -184,22 +196,68 @@ if __name__ == '__main__':
 
     data = sdb.data.copy()
 
-    total = data.groupby(['name', 'version', 'project', 'job_user'])
-    total = total.agg({'total_time' : 'sum', 'cpu_time' : 'sum'})
+    column_labels = { 'name' : 'Software' }
+    if args.list_version: column_labels['version'] = 'Version'
+    if args.list_project: column_labels['project'] = 'Project'
+    if args.list_user: column_labels['job_user'] = 'User'
 
-    # -- Compute cpus averaged per hour (instead of per job)
-    #total['ncpus'] = total.cpu_time / total.total_time
-    #total.pop('total_time')
+    agg_opts = {'total_time' : 'sum', 'cpu_time' : 'sum', 'no_jobs' : 'sum'}    
 
-    # -- Compute percentages
-    #for key in ['cpu_time', 'ncpus']:
-    #    col_idx = total.columns.get_loc(key)
-    #    total.insert(col_idx + 1, key + '_percent', 100. * total[key] / total[key].sum())
+    total = data.groupby(list(column_labels.keys()))
+    total = total.agg(agg_opts)
+    total.index.set_names(column_labels.values(), inplace=True)
 
-    #total.sort_values(by='cpu_time', ascending=False, inplace=True)
+    def recurse_indices(df, column_key, recursion_level=0, prev_index={}):
+        """ Recurse indices and compute relative percentage of `column_key` 
+        for each sub-group of indices. """
 
-    total.index.set_names(['Software', 'Version', 'Project', 'User'], inplace=True)
+        # -- sum over all under key
+        index_name = df.index.names[0]
+        df_agg = df.groupby([index_name])
+        df_agg = df_agg.agg(agg_opts)
 
+        # -- Compute cpus averaged per hour (instead of per job)
+        df_agg['no_cpus'] = df_agg.cpu_time / df_agg.total_time
+        df_agg.pop('total_time')
+        df_agg['percent'] = 100. * df_agg[column_key] / df_agg[column_key].sum()
+
+        # -- sort on column_key
+        df_agg = df_agg.sort_values(by=column_key, ascending=False)
+        
+        rows = []        
+        for key in df_agg.index:
+            # -- Add percentage in key (for display purposes)
+            index = prev_index
+            index[index_name] = '{:5.1f}% '.format(df_agg.loc[key]['percent']) + key
+
+            if len(df.index.names) == 1:
+                row = index
+                row.update(df_agg.loc[key])
+                rows.append(row.copy())
+            else:
+                rows += recurse_indices(
+                    df.loc[key], column_key,
+                    recursion_level=recursion_level + 1, prev_index=index)
+
+        return rows
+                
+    rows = recurse_indices(df=total, column_key='cpu_time')
+
+    column_labels = ['cpu_time', 'no_jobs', 'no_cpus']
+    agg_opts = { label : 'sum' for label in column_labels }
+    tmp = pd.DataFrame(rows, columns = total.index.names + column_labels)
+    tmp = tmp.groupby(total.index.names, sort=False).agg(agg_opts)
+
+    # -- Set up column data formatters
+    formatters = dict()
+    formatters.update({ 'cpu_time' : lambda x : '{:10.0f}'.format(x) })
+    formatters.update({ 'no_jobs' : lambda x : '{:3.0f}'.format(x) })
+    formatters.update({ 'no_cpus' : lambda x : '{:3.1f}'.format(x) })
+
+    print(tmp.to_string(formatters=formatters, header=['Time (Core-h)', 'Jobs', 'Cpus/h']))
+
+    exit()
+    
     total['cpu_time_percent'] = 0
     
     softwares = set(total.index.get_level_values('Software'))
