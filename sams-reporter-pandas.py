@@ -48,32 +48,18 @@ def get_args():
     p_list.add_argument('-lu', '--list_user', action='store_true', help='Show user names')
 
     p_time = parser.add_argument_group('Time options')
-    p_time.add_argument(
-        '-b', '--begin', help='Beginning of time interval',
+    p_time.add_argument('-b', '--begin', help='Beginning of time interval',
         type=dateutil.parser.parse, default=dateutil.parser.parse('2010-01-10'))
-    p_time.add_argument(
-        '-e', '--end', help='End of time interval',
+    p_time.add_argument('-e', '--end', help='End of time interval',
         type=dateutil.parser.parse, default=datetime.now())
 
     p_select = parser.add_argument_group('Selection options')
-    p_select.add_argument(
-        '-s', '--software', help='Only consider jobs using the given software(s)',
-        **strings_opt)
-    p_select.add_argument(
-        '-Is', '--ignore-software', help='Ignore jobs using the given software(s)',
-        **strings_opt)
-    p_select.add_argument(
-        '-u', '--user', help='Only consider jobs for the given user(s)',
-        **strings_opt)
-    p_select.add_argument(
-        '-Iu', '--ignore-user', help='Ignore jobs for the given user(s)',
-        **strings_opt)
-    p_select.add_argument(
-        '-a', '--project', help='Only consider jobs for the given project(s)',
-        **strings_opt)
-    p_select.add_argument(
-        '-Ia', '--ignore-project', help='Ignore jobs for the given project(s)',
-        **strings_opt)
+    p_select.add_argument('-s', '--software', help='Only consider jobs using the given software(s)', **strings_opt)
+    p_select.add_argument('-Is', '--ignore-software', help='Ignore jobs using the given software(s)', **strings_opt)
+    p_select.add_argument('-u', '--user', help='Only consider jobs for the given user(s)', **strings_opt)
+    p_select.add_argument('-Iu', '--ignore-user', help='Ignore jobs for the given user(s)', **strings_opt)
+    p_select.add_argument('-p', '--project', help='Only consider jobs for the given project(s)',  **strings_opt)
+    p_select.add_argument('-Ip', '--ignore-project', help='Ignore jobs for the given project(s)', **strings_opt)
 
     args = parser.parse_args()
     return args
@@ -103,15 +89,13 @@ class SAMSSoftwareAccountingDB:
         
         start, stop = int(args.begin.timestamp()), int(args.end.timestamp())
 
+        # -- Query database for three tables
         query = "select * from "
         time_query = " where end_time >= {} AND start_time <= {};".format(start, stop)
-        
         if self.verbose: print('--> Querying "software" table')
         softwares = pd.read_sql_query(query + "software", self.conn)
-
         if self.verbose: print('--> Querying "command" table')
         commands = pd.read_sql_query(query + "command" + time_query, self.conn)
-
         if self.verbose: print('--> Querying "jobs" table')
         jobs = pd.read_sql_query(query + "jobs" + time_query, self.conn)
         
