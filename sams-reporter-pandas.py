@@ -73,9 +73,11 @@ class SAMSSoftwareAccountingDB:
         self.args = args
         self.verbose = args.verbose
 
+        if self.verbose: print(self.args)
+        
         self._open_db()
         self._load_tables()
-        #self._print_column_labels()
+        self._print_column_labels()
         self._filter_tables()
         self._compute_times()
         self._print_column_labels()
@@ -131,8 +133,8 @@ class SAMSSoftwareAccountingDB:
             return df[select_idx]
 
         if len(args.user) > 0 or len(args.ignore_user) > 0:
-            commands = select_include_exclude(commands, 'user', args.user, args.ignore_user)
-            jobs = select_include_exclude(jobs, 'user', args.user, args.ignore_user)
+            #commands = select_include_exclude(commands, 'user', args.user, args.ignore_user)
+            jobs = select_include_exclude(jobs, 'job_user', args.user, args.ignore_user)
 
         if len(args.project) > 0 or len(args.ignore_project) > 0:
             commands = select_include_exclude(commands, 'project', args.project, args.ignore_project)
@@ -184,7 +186,75 @@ if __name__ == '__main__':
 
     total = data.groupby(['name', 'version', 'project', 'job_user'])
     total = total.agg({'total_time' : 'sum', 'cpu_time' : 'sum'})
-    print(total)
+
+    # -- Compute cpus averaged per hour (instead of per job)
+    #total['ncpus'] = total.cpu_time / total.total_time
+    #total.pop('total_time')
+
+    # -- Compute percentages
+    #for key in ['cpu_time', 'ncpus']:
+    #    col_idx = total.columns.get_loc(key)
+    #    total.insert(col_idx + 1, key + '_percent', 100. * total[key] / total[key].sum())
+
+    #total.sort_values(by='cpu_time', ascending=False, inplace=True)
+
+    total.index.set_names(['Software', 'Version', 'Project', 'User'], inplace=True)
+
+    total['cpu_time_percent'] = 0
+    
+    softwares = set(total.index.get_level_values('Software'))
+    rows = []
+    for software in softwares:
+        #print(software)
+
+        s = total.loc[software].sum()
+        s['cpu_time_percent'] = 100. * s['cpu_time'] / total.cpu_time.sum()        
+        rows.append( ((software, '', '', ''), s) )
+
+        versions = set(total.loc[software].index.get_level_values('Version'))        
+        for version in versions:
+
+            s = total.loc[software, version].sum()
+            s['cpu_time_percent'] = 100. * s['cpu_time'] / total.loc[software].cpu_time.sum()        
+            rows.append( ((software, version, '', ''), s) )
+
+            projects = set(total.loc[software, version].index.get_level_values('Project'))
+            for project in projects:
+
+                s = total.loc[software, version, project].sum()
+                s['cpu_time_percent'] = 100. * s['cpu_time'] / total.loc[
+                    software, version].cpu_time.sum()        
+                rows.append( ((software, version, project, ''), s) )
+
+                # -- compute user percent in project
+                users = total.loc[software, version, project]
+                users['cpu_time_percent'] = 100. * users['cpu_time'] / users.cpu_time.sum()
+                #total.loc[software, version, project] = users
+        
+    #exit()
+    for idx, row in rows:
+        total.loc[idx] = row
+    total.sort_index(level=0, inplace=True)
+
+
+    if False:
+        print(total.index[0])
+        print(total.loc[total.index[0]])
+        s = total.loc['VASP', '5.4.4.10112017-vtst'].sum()
+        total.loc[('VASP', '5.4.4.10112017-vtst', '', '')] = s
+        total.sort_index(level=1, inplace=True)
+
+    # -- Set up column data formatters
+    formatters = dict()
+    formatters.update({ key : lambda x : '{:2.1f}'.format(x) for key in total.columns if 'percent' in key })
+    formatters.update({ 'cpu_time' : lambda x : '{:10.0f}'.format(x) })
+    formatters.update({ 'ncpus' : lambda x : '{:3.0f}'.format(x) })
+
+    print(total.to_string(
+        #header=[ 'Core-h', 'Cpus/h', ],
+        formatters=formatters))
+
+    exit()
 
     project_total = data.groupby(['project', 'name'])
     project_total = project_total.agg({'total_time' : 'sum', 'cpu_time' : 'sum'})
