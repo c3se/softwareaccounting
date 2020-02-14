@@ -82,16 +82,28 @@ class SAMSSoftwareAccountingDB:
         if self.verbose: print('Loading SAMS-Software Accounting data from', self.args.begin, 'to', self.args.end)
         
     def _open_db(self):
-        if self.verbose: print('Using sqlite3 database file: {}'.format(args.filename))
-        self.conn = sqlite3.connect('file:{}?mode=ro'.format(args.filename), uri=True)
+        if self.verbose: print('Using sqlite3 database file: {}'.format(self.args.filename))
+        self.conn = sqlite3.connect('file:{}?mode=ro'.format(self.args.filename), uri=True)
 
     def _load_tables(self):
         
-        start, stop = int(args.begin.timestamp()), int(args.end.timestamp())
+        start, stop = int(self.args.begin.timestamp()), int(self.args.end.timestamp())
 
         # -- Query database for three tables
         query = "select * from "
         time_query = " where end_time >= {} AND start_time <= {};".format(start, stop)
+        
+        if self.verbose: print('--> Querying "users" table')
+        users = pd.read_sql_query(query + "users", self.conn)
+        if self.verbose: print('--> Querying "projects" table')
+        projects = pd.read_sql_query(query + "projects", self.conn)
+        if self.verbose: print('--> Querying "node" table')
+        nodes = pd.read_sql_query(query + "node", self.conn)
+
+        users.rename(columns={'user':'username'}, inplace=True)
+
+        self.users, self.projects, self.nodes = users, projects, nodes
+        
         if self.verbose: print('--> Querying "software" table')
         softwares = pd.read_sql_query(query + "software", self.conn)
         if self.verbose: print('--> Querying "command" table')
@@ -101,14 +113,18 @@ class SAMSSoftwareAccountingDB:
         
         # -- Rename columns in data frames
         softwares.rename(columns={'software':'name'}, inplace=True)
+        softwares.rename(columns={'last_updated':'software_last_updated'}, inplace=True)
         
         commands.rename(columns={'software':'software_id'}, inplace=True)
         commands.rename(columns={'jobid':'job_id'}, inplace=True)
+        commands.rename(columns={'node':'node_id'}, inplace=True)
+        commands.rename(columns={'updated':'command_updated'}, inplace=True)
 
         jobs.rename(columns={'jobid':'slurm_id'}, inplace=True)
         jobs.rename(columns={'start_time':'job_start_time'}, inplace=True)
         jobs.rename(columns={'end_time':'job_end_time'}, inplace=True)
-        jobs.rename(columns={'user':'job_user'}, inplace=True)
+        jobs.rename(columns={'user':'user_id'}, inplace=True)
+        jobs.rename(columns={'project':'project_id'}, inplace=True)
 
         self.softwares, self.commands, self.jobs = softwares, commands, jobs
 
@@ -122,10 +138,13 @@ class SAMSSoftwareAccountingDB:
 
     def _filter_tables(self):
 
-        softwares, commands, jobs = self.softwares, self.commands, self.jobs
+        softwares, commands, jobs, args = self.softwares, self.commands, self.jobs, self.args
 
         def select_include_exclude(df, key, include, exclude):
-            select_idx = df[key].isin(include) & ~df[key].isin(exclude)
+            if len(include) > 0:
+                select_idx = df[key].isin(include) & ~df[key].isin(exclude)
+            else:
+                select_idx = ~df[key].isin(exclude)
             return df[select_idx]
 
         if len(args.user) > 0 or len(args.ignore_user) > 0:
@@ -149,7 +168,8 @@ class SAMSSoftwareAccountingDB:
 
         to_datetime = [
             (jobs, ['job_start_time', 'job_end_time']),
-            (commands, ['start_time', 'end_time']),
+            (commands, ['start_time', 'end_time', 'command_updated']),
+            (softwares, ['software_last_updated']),
             ]
 
         for df, keys in to_datetime:
@@ -172,6 +192,9 @@ class SAMSSoftwareAccountingDB:
         data = self.commands.copy()
         data = data.join(self.jobs.set_index('id'), on='job_id')
         data = data.join(self.softwares.set_index('id'), on='software_id')
+        data = data.join(self.users.set_index('id'), on='user_id')
+        data = data.join(self.projects.set_index('id'), on='project_id')
+        data = data.join(self.nodes.set_index('id'), on='node_id')
         self.data = data
 
     def get_pandas_data_frame(self):
