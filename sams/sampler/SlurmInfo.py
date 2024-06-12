@@ -122,6 +122,11 @@ class Sampler(sams.base.Sampler):
         if starttime:
             self.data["starttime"] = starttime.group(1)
 
+        # Find JobName
+        jobname = re.search(r"JobName=([^ ]+)", data)
+        if jobname:
+            self.data["jobname"] = jobname.group(1)
+
         if not self.do_sample():
             self.store(self.data)
 
