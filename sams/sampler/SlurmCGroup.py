@@ -66,15 +66,15 @@ class Sampler(sams.base.Sampler):
             "memory", "memory.memsw.usage_in_bytes"
         )
 
-        self.store(
-            {
-                "cpus": cpus,
-                "memory_usage": memory_usage,
-                "memory_limit": memory_limit,
-                "memory_max_usage": memory_max_usage,
-                "memory_swap": str(int(memory_usage_and_swap) - int(memory_usage)),
-            }
-        )
+        entry = {
+            "cpus": cpus,
+            "memory_usage": memory_usage,
+            "memory_limit": memory_limit,
+            "memory_max_usage": memory_max_usage,
+            "memory_swap": str(int(memory_usage_and_swap) - int(memory_usage)),
+        }
+        self._most_recent_sample = [self._storage_wrapping(entry)]
+        self.store(entry)
 
     def _get_cgroup(self):
         """Get the cgroup base path for the slurm job"""

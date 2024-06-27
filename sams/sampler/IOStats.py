@@ -156,6 +156,7 @@ class Sampler(sams.base.Sampler):
         while not self.job_iostat.queue.empty():
             data = self.job_iostat.queue.get()
             logger.debug(data)
+            self._most_recent_sample = [self._storage_wrapping(data)]
             self.store(data)
 
     def final_data(self):
