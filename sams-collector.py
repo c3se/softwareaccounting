@@ -43,6 +43,7 @@ class Main:
     def __init__(self):
         self.samplers = []
         self.outputs = []
+        self.listeners = []
         self.pidQueue = None
         self.outQueue = None
 
@@ -196,6 +197,10 @@ class Main:
         for o in filter(lambda t: t.is_alive(), self.outputs):
             o.join()
 
+        for lis in self.listeners:
+            lis.exit()
+            lis.thread.join()
+
         # exit queues
         self.pidQueue.exit()
         self.outQueue.exit()
@@ -244,6 +249,19 @@ class Main:
                 sampler.start()
             except Exception as e:
                 logger.error("Failed to initialize: %s", s)
+                logger.exception(e)
+                self.cleanup()
+                sys.exit(1)
+
+        for s in self.config.get([id, "listeners"], []):
+            logger.info("Load: %s", s)
+            try:
+                Listener = sams.core.ClassLoader.load(s, "Listener")
+                listener = Listener(s, self.config, self.samplers)
+                self.listeners.append(listener)
+                listener.start()
+            except Exception as e:
+                logger.error("Failed to initialize listener: %s", s)
                 logger.exception(e)
                 self.cleanup()
                 sys.exit(1)
