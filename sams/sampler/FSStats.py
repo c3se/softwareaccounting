@@ -97,7 +97,9 @@ class Sampler(sams.base.Sampler):
     def sample(self):
         logger.debug("sample()")
         if self.fsstat:
-            self.store(self.fsstat.sample())
+            fsstat_sample = self.fsstat.sample()
+            self._most_recent_sample = [self._storage_wrapping(fsstat_sample)]
+            self.store(fsstat_sample)
 
     @classmethod
     def final_data(cls):

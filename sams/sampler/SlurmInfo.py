@@ -128,6 +128,7 @@ class Sampler(sams.base.Sampler):
             self.data["jobname"] = jobname.group(1)
 
         if not self.do_sample():
+            self._most_recent_sample = [self._storage_wrapping(self.data)]
             self.store(self.data)
 
     def final_data(self):

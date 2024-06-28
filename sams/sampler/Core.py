@@ -48,6 +48,7 @@ class Sampler(sams.base.Sampler):
             "jobid": self.config.get(["options", "jobid"]),
             "node": self.config.get(["options", "node"]),
         }
+        self._most_recent_sample = [self._storage_wrapping(self.core)]
         self.store(self.core)
 
     def do_sample(self):
