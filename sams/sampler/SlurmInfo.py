@@ -41,6 +41,7 @@ Output:
     uid: 65535,
 }
 """
+import datetime
 import logging
 import os
 import re
@@ -121,6 +122,9 @@ class Sampler(sams.base.Sampler):
         starttime = re.search(r"StartTime=(\d\d\d\d-\d\d-\d\dT\d\d:\d\d:\d\d)", data)
         if starttime:
             self.data["starttime"] = starttime.group(1)
+            starttimestamp = datetime.datetime(
+                    *[int(i) for i in re.findall(r'\d+', starttime.group(1))]).timestamp()
+            self.data["starttimestamp"] = starttimestamp
 
         # Find JobName
         jobname = re.search(r"JobName=([^ ]+)", data)
