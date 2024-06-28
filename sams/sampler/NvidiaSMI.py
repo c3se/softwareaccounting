@@ -62,6 +62,7 @@ import os
 import re
 import subprocess
 import threading
+import time
 
 import sams.base
 
@@ -126,6 +127,10 @@ class SMI(threading.Thread):
 class Sampler(sams.base.Sampler):
     def __init__(self, id, outQueue, config):
         super(Sampler, self).__init__(id, outQueue, config)
+        self._start_time = time.time()
+        self._last_sample_time = dict()
+        self._average_values = dict()
+        self._last_averaged_values = dict()
         self.processes = {}
         self.sampler_interval = self.config.get([self.id, "sampler_interval"], 60)
         self.gpu_index_environment = self.config.get(
@@ -143,6 +148,14 @@ class Sampler(sams.base.Sampler):
                 "clocks.applications.graphics",
                 "clocks.current.graphics",
                 "clocks.current.sm",
+                "utilization.gpu",
+                "utilization.memory",
+            ],
+        )
+        self.metrics_to_average = self.config.get(
+            [self.id, "metrics_to_average"],
+            [
+                "power.draw",
                 "utilization.gpu",
                 "utilization.memory",
             ],
@@ -172,10 +185,47 @@ class Sampler(sams.base.Sampler):
             logger.debug(data)
             index = data["index"]
             del data["index"]
+            self.compute_sample_averages(data, index)
             entry = {index: data}
             most_recent_sample.append(self._storage_wrapping(entry))
             self.store(entry)
         self._most_recent_sample = most_recent_sample
+
+    def compute_sample_averages(self, data, index):
+        """ Computes averages of selected measurements by
+        means of trapezoidal quadrature, approximating
+        that the time this function is called is the actual
+        time of sampling. This is not completely correct but simplifies
+        the implementation.
+        """
+        sample_time = time.time()
+        if index not in self._last_sample_time:
+            # Keep it simple by approximating sampling time
+            self._last_sample_time[index] = self._start_time
+            self._average_values[index] = dict()
+            self._last_averaged_values[index] = dict()
+            for key in data:
+                if key.replace('_', '.') in self.metrics_to_average:
+                    # Initialize trapezoidal integral at 0.
+                    self._average_values[index][key] = 0.
+                    self._last_averaged_values[index][key] = 0.
+        elapsed_time = sample_time - self._last_sample_time[index]
+        total_elapsed_time = sample_time - self._start_time
+        average_values = self._average_values[index]
+        last_averaged_values = self._last_averaged_values[index]
+        self._last_sample_time[index] = sample_time
+        for key, item in data.items():
+            if key.replace('_', '.') in self.metrics_to_average:
+                # Trapezoidal quadrature
+                weighted_item = (
+                        0.5 * (float(item) + float(last_averaged_values[key])) * elapsed_time)
+                last_averaged_values[key] = item
+                previous_integral = average_values[key] * (total_elapsed_time - elapsed_time)
+                new_integral = previous_integral + weighted_item
+                average_values[key] = new_integral / total_elapsed_time
+
+        for key, item in average_values.items():
+            data[key + '_average'] = item
 
     def final_data(self):
         if self.smi:
