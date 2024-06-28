@@ -166,12 +166,16 @@ class Sampler(sams.base.Sampler):
 
     def sample(self):
         logger.debug("sample()")
+        most_recent_sample = []
         while not self.smi.queue.empty():
             data = self.smi.queue.get()
             logger.debug(data)
             index = data["index"]
             del data["index"]
-            self.store({index: data})
+            entry = {index: data}
+            most_recent_sample.append(self._storage_wrapping(entry))
+            self.store(entry)
+        self._most_recent_sample = most_recent_sample
 
     def final_data(self):
         if self.smi:

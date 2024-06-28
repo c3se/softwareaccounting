@@ -51,6 +51,7 @@ class Sampler(threading.Thread):
     def __init__(self, id, outQueue, config):
         super(Sampler, self).__init__()
         self.id = id
+        self._most_recent_sample = None
         self.outQueue = outQueue
         self.config = config
         self.jobid = self.config.get(["options", "jobid"])
@@ -89,8 +90,21 @@ class Sampler(threading.Thread):
             logger.exception("Failed to do self.final_data in %s", self.id)
         self.outQueue.join()
 
+    def _storage_wrapping(self, data, type="now"):
+        """
+        Convenience method for wrapping data into a dictionary used
+        by several other methods.
+        """
+        return {"id": self.id, "data": data, "type": type} 
+
     def store(self, data, type="now"):
-        self.outQueue.put({"id": self.id, "data": data, "type": type})
+        self.outQueue.put(self._storage_wrapping(data, type))
+
+    @property
+    def most_recent_sample(self):
+        """ The most recently sample or set of samples stored by a call
+        to ``self.sample()``."""
+        return self._most_recent_sample
 
     # this should be implemented in the real Sampler..
     # pylint: disable=no-self-use

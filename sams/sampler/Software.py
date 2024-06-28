@@ -205,19 +205,19 @@ class Sampler(sams.base.Sampler):
         if self.last_sample_time:
             time_diff = time.time() - self.last_sample_time
             if time_diff > self.sampler_interval / 2:
-                self.store(
-                    {
-                        "current": {
-                            "software": self.map_software(aggr),
-                            "total_user": total["user"],
-                            "total_system": total["system"],
-                            "user": (total["user"] - self.last_total["user"])
-                            / time_diff,
-                            "system": (total["system"] - self.last_total["system"])
-                            / time_diff,
+                entry = {
+                    "current": {
+                        "software": self.map_software(aggr),
+                        "total_user": total["user"],
+                        "total_system": total["system"],
+                        "user": (total["user"] - self.last_total["user"])
+                        / time_diff,
+                        "system": (total["system"] - self.last_total["system"])
+                        / time_diff,
                         }
                     }
-                )
+                self._most_recent_sample = [self._storage_wrapping(entry)]
+                self.store(entry)
                 self.last_total = total
                 self.last_sample_time = time.time()
         else:
