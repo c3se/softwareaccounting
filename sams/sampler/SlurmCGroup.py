@@ -48,7 +48,7 @@ logger = logging.getLogger(__name__)
 
 class Sampler(sams.base.Sampler):
     def __init__(self, id, outQueue, config):
-        super(Sampler, self).__init__(id, outQueue, config)
+        super().__init__(id, outQueue, config)
         self.processes = {}
         self.cgroup = None
         self.cgroup_base = self.config.get([self.id, "cgroup_base"], "/cgroup")
@@ -109,48 +109,57 @@ class Sampler(sams.base.Sampler):
             data[key + '_average'] = item
         self.last_sample_time = time.time()
 
+    @staticmethod
+    def _get_cgroup_regex():
+        """Version-specific regular expression to find correct cgroup path."""
+        return r"^/(slurm/uid_\d+/job_\d+)/"
+
     def _get_cgroup(self):
         """Get the cgroup base path for the slurm job"""
         if self.cgroup:
             return True
         for pid in self.pids:
             try:
+                logger.debug(f"Checking /proc/{pid}/cpuset")
                 with open("/proc/%d/cpuset" % pid, "r") as file:
                     cpuset = file.readline()
-                    m = re.search(r"^/(slurm/uid_\d+/job_\d+)/", cpuset)
-                    if m:
+                    m = re.search(self._get_cgroup_regex(), cpuset)
+                    if m is not None:
                         self.cgroup = m.group(1)
                         return True
-            except Exception as e:
-                logger.debug("Failed to fetch cpuset for pid: %d", self.pids[0])
+            except (OSError, re.PatternError) as e:
+                logger.debug(f"Failed to fetch cpuset for pid: {pid}")
                 logger.debug(e)
         return False
 
-    @classmethod
-    def _cpucount(cls, count):
+    @staticmethod
+    def _cpucount(count):
         """Calculate number of cpus from a "N,N-N"-structure"""
         cpu_count = 0
         for c in count.split(","):
             m = re.search(r"^(\d+)-(\d+)$", c)
-            if m:
+            if m is not None:
                 cpu_count += int(m.group(2)) - int(m.group(1)) + 1
             m = re.search(r"^(\d+)$", c)
-            if m:
+            if m is not None:
                 cpu_count += 1
         return cpu_count
 
-    def read_cgroup(self, type, id):
+    def _get_cgroup_item_path(self, resource_type, value):
+        """ Version-specific parsing function. We assume the number
+        of arguments passed by read_cgroup is correct to trigger
+        any errors early."""
+        return os.path.join(self.cgroup_base, resource_type,
+                            self.cgroup, value)
+
+    def read_cgroup(self, *items):
+        path = self._get_cgroup_item_path(*items)
         try:
-            with open(
-                os.path.join(self.cgroup_base, type, self.cgroup, id), "r"
-            ) as file:
+            with open(path, "r") as file:
                 return file.readline().strip()
-        except IOError as err:
-            logger.debug(
-                "Failed to open %s for reading",
-                os.path.join(self.cgroup_base, type, self.cgroup, id),
-            )
-            logger.debug(err)
+        except OSError as err:
+            logger.error(f"Failed to open {path} for reading")
+            logger.error(err)
             return ""
 
     @classmethod
