@@ -80,7 +80,8 @@ class Sampler(sams.base.Sampler):
         self.volumes = self.config.get([self.id, "volumes"])
         self.zfs_command = self.config.get([self.id, "zfs_command"], "/sbin/zfs")
         self.jobid = self.config.get(["options", "jobid"], 0)
-        self.last_sample_time = time.time()
+        self.create_time = time.time()
+        self.last_sample_time = self.create_time
         self.metrics_to_average = self.config.get(
             [self.id, "metrics_to_average"],
             ["used"])
