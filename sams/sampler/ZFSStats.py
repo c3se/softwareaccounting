@@ -85,14 +85,14 @@ class Sampler(sams.base.Sampler):
         self.metrics_to_average = self.config.get(
             [self.id, "metrics_to_average"],
             ["used"])
-        self._average_values = {v: {k: 0 for k in self.metrics_to_average} for v in self.volumes}
-        self._last_averaged_values = {v: {k: 0 for k in self.metrics_to_average} for v in self.volumes}
 
         if not self.volumes:
             raise sams.base.SamplerException("volumes not configured")
 
         volumes = [volume % dict(jobid=self.jobid) for volume in self.volumes]
 
+        self._average_values = {v: {k: 0 for k in self.metrics_to_average} for v in volumes}
+        self._last_averaged_values = {v: {k: 0 for k in self.metrics_to_average} for v in volumes}
         self.zfsstat = None
         if volumes:
             self.zfsstat = ZFSStats(volumes=volumes, zfs_command=self.zfs_command)
