@@ -39,6 +39,7 @@ Output:
 import logging
 import os
 import re
+import time
 
 import sams.base
 
@@ -51,6 +52,13 @@ class Sampler(sams.base.Sampler):
         self.processes = {}
         self.cgroup = None
         self.cgroup_base = self.config.get([self.id, "cgroup_base"], "/cgroup")
+        self.create_time = time.time()
+        self.last_sample_time = self.create_time
+        self.metrics_to_average = self.config.get(
+            [self.id, "metrics_to_average"],
+            ["memory_usage"])
+        self._average_values = {k: 0 for k in self.metrics_to_average}
+        self._last_averaged_values = {k: 0 for k in self.metrics_to_average}
 
     def do_sample(self):
         return self._get_cgroup()
@@ -73,8 +81,33 @@ class Sampler(sams.base.Sampler):
             "memory_max_usage": memory_max_usage,
             "memory_swap": str(int(memory_usage_and_swap) - int(memory_usage)),
         }
+        self.compute_sample_averages(entry)
         self._most_recent_sample = [self._storage_wrapping(entry)]
         self.store(entry)
+
+    def compute_sample_averages(self, data):
+        """ Computes averages of selected measurements by
+        means of trapezoidal quadrature, approximating
+        that the time this function is called is the actual
+        time of sampling. This is not completely correct but simplifies
+        the implementation.
+        """
+        sample_time = time.time()
+        elapsed_time = sample_time - self.last_sample_time
+        total_elapsed_time = sample_time - self.create_time
+        for key, item in data.items():
+            if key in self.metrics_to_average:
+                # Trapezoidal quadrature
+                weighted_item = (
+                        0.5 * (float(item) + float(self._last_averaged_values[key])) * elapsed_time)
+                self._last_averaged_values[key] = item
+                previous_integral = self._average_values[key] * (total_elapsed_time - elapsed_time)
+                new_integral = previous_integral + weighted_item
+                self._average_values[key] = new_integral / total_elapsed_time
+
+        for key, item in self._average_values.items():
+            data[key + '_average'] = item
+        self.last_sample_time = time.time()
 
     def _get_cgroup(self):
         """Get the cgroup base path for the slurm job"""

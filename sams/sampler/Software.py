@@ -158,6 +158,11 @@ class Sampler(sams.base.Sampler):
         self.last_sample_time = None
         self.last_total = None
         self.software_mapper = None
+        self.metrics_to_average = self.config.get(
+            [self.id, "metrics_to_average"],
+            ["system", "user"])
+        self._average_values = {k: 0 for k in self.metrics_to_average}
+        self._last_averaged_values = {k: 0 for k in self.metrics_to_average}
 
         software_mapper = self.config.get([id, "software_mapper"], None)
         if software_mapper is not None:
@@ -195,34 +200,61 @@ class Sampler(sams.base.Sampler):
 
         for pid in self.pids:
             logger.debug("evaluate pid: %d", pid)
-            if not pid in self.processes.keys():
+            if pid not in self.processes.keys():
                 logger.debug("Create new instance of Process for pid: %d", pid)
                 self.processes[pid] = Process(pid, self.jobid)
             self.processes[pid].update(uptime)
 
         # Send information about current usage
         aggr, total = self._aggregate()
-        if self.last_sample_time:
-            time_diff = time.time() - self.last_sample_time
-            if time_diff > self.sampler_interval / 2:
-                entry = {
-                    "current": {
-                        "software": self.map_software(aggr),
-                        "total_user": total["user"],
-                        "total_system": total["system"],
-                        "user": (total["user"] - self.last_total["user"])
-                        / time_diff,
-                        "system": (total["system"] - self.last_total["system"])
-                        / time_diff,
-                        }
-                    }
-                self._most_recent_sample = [self._storage_wrapping(entry)]
-                self.store(entry)
-                self.last_total = total
-                self.last_sample_time = time.time()
-        else:
+
+        if self.last_sample_time is None:
             self.last_total = total
             self.last_sample_time = time.time()
+            return
+
+        time_diff = time.time() - self.last_sample_time
+        if time_diff > self.sampler_interval / 2:
+            entry = {
+                "current": {
+                    "software": self.map_software(aggr),
+                    "total_user": total["user"],
+                    "total_system": total["system"],
+                    "user": (total["user"] - self.last_total["user"])
+                    / time_diff,
+                    "system": (total["system"] - self.last_total["system"])
+                    / time_diff,
+                    }
+                }
+            self.compute_sample_averages(entry["current"])
+            self._most_recent_sample = [self._storage_wrapping(entry)]
+            self.store(entry)
+            self.last_total = total
+            self.last_sample_time = time.time()
+
+    def compute_sample_averages(self, data):
+        """ Computes averages of selected measurements by
+        means of trapezoidal quadrature, approximating
+        that the time this function is called is the actual
+        time of sampling. This is not completely correct but simplifies
+        the implementation.
+        """
+        sample_time = time.time()
+        elapsed_time = sample_time - self.last_sample_time
+        total_elapsed_time = sample_time - self.create_time
+        for key, item in data.items():
+            if key in self.metrics_to_average:
+                # Trapezoidal quadrature
+                weighted_item = (
+                        0.5 * (float(item) + float(self._last_averaged_values[key])) * elapsed_time)
+                self._last_averaged_values[key] = item
+                previous_integral = self._average_values[key] * (total_elapsed_time - elapsed_time)
+                new_integral = previous_integral + weighted_item
+                self._average_values[key] = new_integral / total_elapsed_time
+
+        for key, item in self._average_values.items():
+            data[key + '_average'] = item
+        data['elapsed_time'] = total_elapsed_time
 
     def last_updated(self):
         procs = list(filter(lambda p: not p.ignore, self.processes.values()))
@@ -250,7 +282,7 @@ class Sampler(sams.base.Sampler):
                 a["system"],
             )
             exe = a["exe"]
-            if not exe in aggr:
+            if exe not in aggr:
                 aggr[exe] = {"user": 0.0, "system": 0.0}
             aggr[exe]["user"] += a["user"]
             aggr[exe]["system"] += a["system"]

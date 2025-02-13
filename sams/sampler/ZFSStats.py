@@ -42,6 +42,7 @@ Output:
 
 import logging
 import subprocess
+import time
 
 import sams.base
 
@@ -79,6 +80,12 @@ class Sampler(sams.base.Sampler):
         self.volumes = self.config.get([self.id, "volumes"])
         self.zfs_command = self.config.get([self.id, "zfs_command"], "/sbin/zfs")
         self.jobid = self.config.get(["options", "jobid"], 0)
+        self.last_sample_time = time.time()
+        self.metrics_to_average = self.config.get(
+            [self.id, "metrics_to_average"],
+            ["used"])
+        self._average_values = {v: {k: 0 for k in self.metrics_to_average} for v in self.volumes}
+        self._last_averaged_values = {v: {k: 0 for k in self.metrics_to_average} for v in self.volumes}
 
         if not self.volumes:
             raise sams.base.SamplerException("volumes not configured")
@@ -98,8 +105,33 @@ class Sampler(sams.base.Sampler):
         logger.debug("sample()")
         if self.zfsstat:
             entry = self.zfsstat.sample()
+            self.compute_sample_averages(entry)
             self._most_recent_sample = [self._storage_wrapping(entry)]
             self.store(entry)
+
+    def compute_sample_averages(self, volume_data):
+        """ Computes averages of selected measurements by
+        means of trapezoidal quadrature, approximating
+        that the time this function is called is the actual
+        time of sampling. This is not completely correct but simplifies
+        the implementation.
+        """
+        sample_time = time.time()
+        elapsed_time = sample_time - self.last_sample_time
+        total_elapsed_time = sample_time - self.create_time
+        for v, data in volume_data.items():
+            for key, item in data.items():
+                if key in self.metrics_to_average:
+                    # Trapezoidal quadrature
+                    weighted_item = (
+                            0.5 * (float(item) + float(self._last_averaged_values[v][key])) * elapsed_time)
+                    self._last_averaged_values[v][key] = item
+                    previous_integral = self._average_values[v][key] * (total_elapsed_time - elapsed_time)
+                    new_integral = previous_integral + weighted_item
+                    self._average_values[v][key] = new_integral / total_elapsed_time
+            for key, item in self._average_values[v].items():
+                data[key + '_average'] = item
+        self.last_sample_time = sample_time
 
     @classmethod
     def final_data(cls):
