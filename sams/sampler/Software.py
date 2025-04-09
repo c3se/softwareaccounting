@@ -207,7 +207,8 @@ class Sampler(sams.base.Sampler):
 
         # Send information about current usage
         aggr, total = self._aggregate()
-        time_diff = time.time() - self.last_sample_time
+        sample_time = time.time()
+        time_diff = sample_time - self.last_sample_time
         entry = {
             "current": {
                 "software": self.map_software(aggr),
@@ -219,11 +220,14 @@ class Sampler(sams.base.Sampler):
                 / time_diff,
                 }
             }
+        if sample_time - self.create_time < self.sample_interval / 2:
+            entry["current"]["user"] = 0
+            entry["current"]["system"] = 0
         self.compute_sample_averages(entry["current"])
         self._most_recent_sample = [self._storage_wrapping(entry)]
         self.store(entry)
         self.last_total = total
-        self.last_sample_time = time.time()
+        self.last_sample_time = sample_time
 
     def compute_sample_averages(self, data):
         """ Computes averages of selected measurements by
