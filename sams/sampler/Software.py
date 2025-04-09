@@ -155,7 +155,7 @@ class Sampler(sams.base.Sampler):
         super(Sampler, self).__init__(id, outQueue, config)
         self.processes = {}
         self.create_time = time.time()
-        self.last_sample_time = self.create_time - self.sampler_interval
+        self.last_sample_time = self.create_time
         self.last_total = {"user": 0, "system": 0}
         self.software_mapper = None
         self.metrics_to_average = self.config.get(
@@ -215,9 +215,9 @@ class Sampler(sams.base.Sampler):
                 "total_user": total["user"],
                 "total_system": total["system"],
                 "user": (total["user"] - self.last_total["user"])
-                / time_diff,
+                / self.sampler_interval,
                 "system": (total["system"] - self.last_total["system"])
-                / time_diff,
+                / self.sampler_interval,
                 }
             }
         self.compute_sample_averages(entry["current"])
