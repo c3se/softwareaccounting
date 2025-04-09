@@ -220,7 +220,7 @@ class Sampler(sams.base.Sampler):
                 / time_diff,
                 }
             }
-        if self.last_sample_time == self.create_time:
+        if sample_time - self.create_time < self.sampler_interval / 2:
             entry["current"]["user"] = 0
             entry["current"]["system"] = 0
         self.compute_sample_averages(entry["current"])
