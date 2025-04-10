@@ -215,9 +215,9 @@ class Sampler(sams.base.Sampler):
                 "total_user": total["user"],
                 "total_system": total["system"],
                 "user": (total["user"] - self.last_total["user"])
-                / self.sampler_interval,
+                / time_diff,
                 "system": (total["system"] - self.last_total["system"])
-                / self.sampler_interval,
+                / time_diff,
                 }
             }
         self.compute_sample_averages(entry["current"])
