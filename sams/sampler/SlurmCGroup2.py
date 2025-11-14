@@ -32,6 +32,7 @@ class Sampler(BaseCGroupSampler):
         logger.debug("sample()")
 
         cpus = self._cpucount(self.read_cgroup("cpuset.cpus"))
+        user_cpu_usec = self.read_cgroup("cpu.stat", metric_name="user_usec")
         memory_usage = self.read_cgroup("memory.current")
         memory_limit = self.read_cgroup("memory.high")
         memory_max_usage = self.read_cgroup("memory.max")
@@ -40,10 +41,12 @@ class Sampler(BaseCGroupSampler):
 
         entry = {
             "cpus": cpus,
+            "user_cpu_usec": user_cpu_usec,
             "memory_usage": memory_usage,
             "memory_limit": memory_limit,
             "memory_max_usage": memory_max_usage,
-            "memory_swap": str(int(memory_usage_and_swap) - int(memory_usage))}
+            "memory_swap": str(int(memory_usage_and_swap) - int(memory_usage)),
+        }
         self.compute_sample_averages(entry)
         self._most_recent_sample = [self._storage_wrapping(entry)]
         self.store(entry)

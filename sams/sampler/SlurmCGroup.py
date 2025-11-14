@@ -152,13 +152,27 @@ class Sampler(sams.base.Sampler):
         return os.path.join(self.cgroup_base, resource_type,
                             self.cgroup, value)
 
-    def read_cgroup(self, *items):
+    def read_cgroup(self, *items, metric_name=None):
+        """Get metric value from target file. If `metric_name` is provided,
+        file will be parsed to return the first found value. Otherwise the file
+        should have one line indicating the value.
+        """
         path = self._get_cgroup_item_path(*items)
         try:
             with open(path, "r") as file:
-                return file.readline().strip()
+                if not metric_name:
+                    return file.readline().strip()
+                else:
+                    for line in file:
+                        if line.startswith(metric_name):
+                            return line.split()[1].strip()
+                    else:
+                        raise RuntimeError(f"Failed to extract {metric_name} value from {path}")
         except OSError as err:
             logger.error(f"Failed to open {path} for reading")
+            logger.error(err)
+            return ""
+        except RuntimeError as err:
             logger.error(err)
             return ""
 
